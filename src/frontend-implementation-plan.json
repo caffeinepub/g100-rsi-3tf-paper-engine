@@ -1,0 +1,164 @@
+{
+  "kind": "implementation_plan",
+  "version": "1.0",
+  "title": "G100 Transport Stabilization Patch",
+  "requirements": [
+    {
+      "id": "REQ-19",
+      "summary": "Implement safeFetch utility function with timeout, retry logic, and comprehensive error handling",
+      "acceptanceCriteria": [
+        "safeFetch function accepts url, optional fetch options, and retries parameter (default 2)",
+        "AbortController terminates request after 5000ms timeout",
+        "On non-ok response or network error, retry up to 2 times with 500ms delay",
+        "FETCH_RETRY event logged before each retry with attempt number",
+        "FETCH_FAIL event logged on final failure with url and error message",
+        "Function returns null on final failure, never propagates error upward",
+        "Function returns parsed JSON response on success"
+      ],
+      "file_operations": [
+        {
+          "path": "frontend/src/utils/safeFetch.ts",
+          "operation": "create",
+          "description": "Create safeFetch utility function with base endpoint https://api.binance.com, 5000ms timeout using AbortController, 2 retry attempts with 500ms delay between retries, returns null on final failure (never throws), logs FETCH_RETRY event before each retry with attempt number, logs FETCH_FAIL event on final failure with {url, error} payload, returns parsed JSON on success"
+        }
+      ]
+    },
+    {
+      "id": "REQ-20",
+      "summary": "Replace all Binance API fetch calls with safeFetch and update base URL",
+      "acceptanceCriteria": [
+        "All fetch calls in binanceApi.ts replaced with safeFetch",
+        "Base URL changed to https://api.binance.com",
+        "Existing endpoint paths preserved (/api/v3/klines, etc.)",
+        "Functions return null when safeFetch returns null",
+        "No unhandled promise rejections in binanceApi.ts"
+      ],
+      "file_operations": [
+        {
+          "path": "frontend/src/services/binanceApi.ts",
+          "operation": "modify",
+          "description": "Replace all existing fetch calls with safeFetch utility, change base URL from https://data-api.binance.vision to https://api.binance.com for all endpoints, preserve existing endpoint paths (/api/v3/klines, etc.), ensure functions return null when safeFetch returns null, eliminate all unhandled promise rejections"
+        }
+      ]
+    },
+    {
+      "id": "REQ-21",
+      "summary": "Replace fetchExchangeInfo and fetch24hrTickers with unified fetchUniverse24h function",
+      "acceptanceCriteria": [
+        "fetchUniverse24h function created calling /api/v3/ticker/24hr",
+        "Uses safeFetch for transport",
+        "Returns empty array if safeFetch returns null",
+        "Returns empty array if result is not Array.isArray",
+        "Logs UNIVERSE_EMPTY event when returning empty array",
+        "Function never throws errors"
+      ],
+      "file_operations": [
+        {
+          "path": "frontend/src/services/binanceApi.ts",
+          "operation": "modify",
+          "description": "Replace fetchExchangeInfo and fetch24hrTickers functions with single fetchUniverse24h function that calls https://api.binance.com/api/v3/ticker/24hr using safeFetch, validates result is array using Array.isArray, logs UNIVERSE_EMPTY event and returns empty array if result is null or not array, never throws errors"
+        }
+      ]
+    },
+    {
+      "id": "REQ-22",
+      "summary": "Update universe filtering with lower volume threshold and fallback logic",
+      "acceptanceCriteria": [
+        "quoteVolume filter changed to > 5,000,000",
+        "quoteVolume parsed using Number() function",
+        "If filtered.length === 0 after all filters applied, log UNIVERSE_FALLBACK",
+        "Fallback selects first 20 symbols ending with 'USDT' from raw universe",
+        "Fallback bypasses volume filter but keeps USDT requirement",
+        "System never produces empty TOP5 due to filtering",
+        "Existing UNIVERSE_FILTERED log event preserved with {before, after} counts"
+      ],
+      "file_operations": [
+        {
+          "path": "frontend/src/services/universeFilter.ts",
+          "operation": "modify",
+          "description": "Modify to use new fetchUniverse24h function from binanceApi, lower quoteVolume filter threshold from 20,000,000 to 5,000,000, convert quoteVolume using Number(), implement fallback logic: if filtered array length is 0 then log UNIVERSE_FALLBACK event and take first 20 USDT-ending symbols from raw universe without volume filter, preserve existing UNIVERSE_FILTERED log event with {before, after} counts"
+        }
+      ]
+    },
+    {
+      "id": "REQ-23",
+      "summary": "Add delay between per-symbol kline fetch calls",
+      "acceptanceCriteria": [
+        "300ms delay added between consecutive kline fetch calls for different symbols",
+        "Delay only applies to per-symbol kline fetching in engineLoop.ts",
+        "No delay added to universe fetch or other API calls",
+        "Engine tick interval remains 15 seconds",
+        "Delay implemented using setTimeout or async delay helper"
+      ],
+      "file_operations": [
+        {
+          "path": "frontend/src/utils/delay.ts",
+          "operation": "create",
+          "description": "Create async delay helper function that returns a Promise resolving after specified milliseconds using setTimeout"
+        },
+        {
+          "path": "frontend/src/services/engineLoop.ts",
+          "operation": "modify",
+          "description": "Add 300ms delay between per-symbol kline fetch calls only (not between other fetch types or entire engine loop) using the delay helper function, ensure delay only applies to consecutive symbol processing, do not delay universe fetch or engine tick interval (remains 15 seconds)"
+        }
+      ]
+    },
+    {
+      "id": "REQ-24",
+      "summary": "Implement graceful error handling for all safeFetch null returns in engine loop",
+      "acceptanceCriteria": [
+        "If TOP5 refresh (fetchUniverse24h) returns empty array, log TOP5_REFRESH_FAIL and continue with existing TOP5",
+        "If kline fetch returns null for a symbol, skip RSI calculation for that symbol and continue loop",
+        "ENGINE_TICK event logged on every tick regardless of fetch failures",
+        "Engine never crashes due to fetch errors",
+        "All promises properly caught with try/catch or .catch()",
+        "Engine remains deterministic and stable"
+      ],
+      "file_operations": [
+        {
+          "path": "frontend/src/services/engineLoop.ts",
+          "operation": "modify",
+          "description": "Modify to handle all safeFetch null returns gracefully: TOP5 refresh failures log TOP5_REFRESH_FAIL event but continue engine execution with existing TOP5, kline fetch failures skip that symbol but continue processing other symbols, ensure no fetch error may stop ENGINE_TICK or crash the engine, wrap all async operations in try/catch blocks, ensure zero unhandled promise rejections in engine loop, log TOP5_SKIP_EMPTY event when TOP5 refresh returns empty array"
+        }
+      ]
+    },
+    {
+      "id": "REQ-25",
+      "summary": "Add new log event types to store type definitions",
+      "acceptanceCriteria": [
+        "FETCH_RETRY event type added to LogEntry union type",
+        "FETCH_FAIL event type added to LogEntry union type",
+        "UNIVERSE_EMPTY event type added to LogEntry union type",
+        "UNIVERSE_FALLBACK event type added to LogEntry union type",
+        "TOP5_REFRESH_FAIL event type added to LogEntry union type",
+        "TOP5_SKIP_EMPTY event type added to LogEntry union type",
+        "All new event types compatible with existing log buffer (max 1000 entries)"
+      ],
+      "file_operations": [
+        {
+          "path": "frontend/src/types/store.ts",
+          "operation": "modify",
+          "description": "Add new log event types to LogEntry union type: FETCH_RETRY (with attempt number), FETCH_FAIL (with url and error), UNIVERSE_EMPTY, UNIVERSE_FALLBACK, TOP5_REFRESH_FAIL, TOP5_SKIP_EMPTY, ensure all new events follow existing log structure with timestamp and payload, maintain compatibility with existing log buffer (max 1000 entries)"
+        }
+      ]
+    },
+    {
+      "id": "REQ-26",
+      "summary": "Update LogsTab to display and color-code new log event types",
+      "acceptanceCriteria": [
+        "FETCH_FAIL and TOP5_REFRESH_FAIL events display in red",
+        "FETCH_RETRY and UNIVERSE_FALLBACK events display in yellow/warning color",
+        "UNIVERSE_EMPTY and TOP5_SKIP_EMPTY events display in default text color",
+        "All new event types render properly in logs panel",
+        "Payload data displayed for all new event types"
+      ],
+      "file_operations": [
+        {
+          "path": "frontend/src/components/LogsTab.tsx",
+          "operation": "modify",
+          "description": "Update to display new log event types (FETCH_RETRY, FETCH_FAIL, UNIVERSE_EMPTY, UNIVERSE_FALLBACK, TOP5_REFRESH_FAIL, TOP5_SKIP_EMPTY) with appropriate color coding: red for FETCH_FAIL and TOP5_REFRESH_FAIL, yellow for FETCH_RETRY and UNIVERSE_FALLBACK, default color for UNIVERSE_EMPTY and TOP5_SKIP_EMPTY, ensure payload data displays properly for all new event types"
+        }
+      ]
+    }
+  ]
+}

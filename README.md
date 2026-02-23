@@ -1,2 +1,3 @@
-# g100-rsi-3tf-paper-engine
-Exported from Caffeine project: G100 RSI 3TF Paper Engine
+## 
+
+To run app build and run docker image: `docker build -t app . docker run -it --network host app`

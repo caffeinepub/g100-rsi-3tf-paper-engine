@@ -1,0 +1,408 @@
+{
+  "schemaVersion": "1.0.0",
+  "projectStateVersion": 7,
+  "summary": "G100 RSI 3TF Paper Engine - A frontend-only paper trading bot for LONG-only positions on TOP5 USDT symbols ranked by 24h quoteVolume. Uses RSI(27) on 1m/5m/15m timeframes with strict entry gates: 55<RSI15m<70, RSI5m>50, RSI1m crosses up >45. Max 2 simultaneous positions with 1% equity risk per trade, 0.6% fixed stop loss, TP1 flag at +1%, TP2 exit at +2%, and 45min time stop. Features 30min cooldown after SL only, Binance REST API integration (data-api.binance.vision), closed-candle-only logic with monotonic guards, Zustand persistence, mobile-first UI with TOP5/TRADES/STATS/LOGS tabs, CSV/JSON export, and comprehensive logging. Built for collecting trading statistics with zero crashes and no state corruption.",
+  "architectural_notes": [
+    "Deterministic closed-candle-only logic with monotonic closeTime guards to prevent state corruption",
+    "Zustand state management with persistence (partialize excludes runtime fields like _intervalId/_runId)",
+    "Single engine loop with engineRunId increment on start to prevent ghost intervals",
+    "Global ErrorBoundary wrapping App to catch render crashes with fallback UI and storage reset",
+    "All buttons use type='button' to prevent page reloads in caffeine.ai environment",
+    "Defensive UI rendering with Array.isArray checks and default empty arrays/objects for undefined values",
+    "Mobile-first responsive design with tab-based navigation (TOP5/TRADES/STATS/LOGS)",
+    "safeFetch transport layer with 5s timeout, 2 retries, 500ms delay, never throws (returns null on failure)",
+    "Binance endpoint switched to api.binance.com (from data-api.binance.vision) using /api/v3/ticker/24hr for universe",
+    "Universe volume filter lowered to 5M with fallback to first 20 USDT pairs if filtering produces empty results"
+  ],
+  "known_issues": [
+    "1-candle latency acceptable: using limit=2 with klines[0] as closed candidate (older candle)",
+    "LocalStorage persistence may fail in private/incognito mode (app will use in-memory state only)",
+    "CSV export may not work in some mobile browsers (fallback to JSON export)",
+    "Engine tick interval of 15s means max 15s delay in detecting entry/exit conditions",
+    "Transport failures are logged but do not crash engine (safeFetch returns null on final failure)",
+    "Empty universe after filtering triggers fallback to first 20 USDT pairs (UNIVERSE_FALLBACK logged)"
+  ],
+  "isFixRequest": true,
+  "existing_features": [
+    {
+      "id": "feature-implement-binance-rest-api-transport-layer-using-base-url-https-data-api-binance-vision-with-endpoints-get-api-v3-exchangeinfo-usdt-pairs-validation-get-api-v3-ticker-24hr-quotevolume-data-get-api-v3-klines-1m-5m-15m-candles-parse-kline-arrays-with-opentime-k-0-open-k-1-high-k-2-low-k-3-close-k-4-closetime-k-6-as-numbers-include-300ms-delays-between-per-symbol-fetches-and-abort-current-cycle-if-10-fetch-failures-occur-log-fetch-throttled-and-continue-next-interval",
+      "title": "Implement Binance REST API transport layer using base URL https://data-api.binance.vision with endpoints: GET /api/v3/exchangeInfo (USDT pairs validation), GET /api/v3/ticker/24hr (quoteVolume data), GET /api/v3/klines (1m/5m/15m candles). Parse kline arrays with openTime=k[0], open=k[1], high=k[2], low=k[3], close=k[4], closeTime=k[6] as Numbers. Include 300ms delays between per-symbol fetches and abort current cycle if >10 fetch failures occur (log FETCH_THROTTLED and continue next interval).",
+      "reqIds": [
+        "REQ-1"
+      ],
+      "version": 1
+    },
+    {
+      "id": "feature-implement-rsi-27-calculation-using-wilder-s-smoothing-method-for-1m-5m-and-15m-timeframes-fetch-limit-200-closed-candles-per-timeframe-calculate-gains-losses-from-close-price-diffs-compute-initial-avggain-avgloss-using-sma-27-then-apply-wilder-smoothing-formula-rsi-100-100-1-rs-where-rs-avggain-avgloss-guard-cases-if-avgloss-0-then-rsi-100-if-avggain-0-then-rsi-0-store-rsicache-as-map-of-symbol-to-rsi1m-rsi5m-rsi15m-times",
+      "title": "Implement RSI(27) calculation using Wilder's smoothing method for 1m, 5m, and 15m timeframes. Fetch limit=200 closed candles per timeframe. Calculate gains/losses from close price diffs, compute initial avgGain/avgLoss using SMA(27), then apply Wilder smoothing. Formula: RSI = 100 - (100 / (1 + RS)) where RS = avgGain/avgLoss. Guard cases: if avgLoss==0 then RSI=100, if avgGain==0 then RSI=0. Store rsiCache as map of symbol to {rsi1m, rsi5m, rsi15m, times}.",
+      "reqIds": [
+        "REQ-3"
+      ],
+      "version": 1
+    },
+    {
+      "id": "feature-implement-universe-filtering-select-usdt-quote-symbols-apply-24h-quotevolume-20-000-000-filter-exclude-symbols-containing-case-insensitive-usd-usdc-fdusd-tusd-usdp-dai-busd-ust-eur-gbp-pax-usd1-exclude-major-pairs-btcusdt-ethusdt-solusdt-bnbusdt-xrpusdt-adausdt-rank-remaining-symbols-by-pure-24h-quotevolume-descending-no-composite-score-select-top5-log-universe-filtered-event-with-before-after-excludedstable-excludedmajors-counts",
+      "title": "Implement universe filtering: select USDT quote symbols, apply 24h quoteVolume >= 20,000,000 filter, exclude symbols containing (case-insensitive): USD, USDC, FDUSD, TUSD, USDP, DAI, BUSD, UST, EUR, GBP, PAX, USD1. Exclude major pairs: BTCUSDT, ETHUSDT, SOLUSDT, BNBUSDT, XRPUSDT, ADAUSDT. Rank remaining symbols by pure 24h quoteVolume descending (no composite score). Select TOP5. Log UNIVERSE_FILTERED event with {before, after, excludedStable, excludedMajors} counts.",
+      "reqIds": [
+        "REQ-4"
+      ],
+      "version": 1
+    },
+    {
+      "id": "feature-implement-3-timeframe-entry-gate-logic-for-long-only-positions-gates-gate15m-55-rsi15m-70-gate5m-rsi5m-50-gate1mcross-rsi1m-crosses-up-above-45-prev-45-and-curr-45-evaluate-entry-only-if-all-rsi-values-are-finite-monotonic-closetime-caches-fresh-execute-entry-in-same-tick-when-cross-confirmed-on-closed-1m-candle-if-all-gates-true-and-risk-margin-validation-passes-and-position-limits-not-reached-and-no-active-cooldown-set-entryprice-lastclosed1m-close-float-no-rounding-log-rsi-values-rsi-cross-up-entry-check-events-with-gate-breakdown",
+      "title": "Implement 3-timeframe entry gate logic for LONG-only positions. Gates: Gate15m (55 < RSI15m < 70), Gate5m (RSI5m > 50), Gate1mCross (RSI1m crosses up above 45: prev <= 45 AND curr > 45). Evaluate entry only if all RSI values are finite (monotonic closeTime caches fresh). Execute entry in same tick when cross confirmed on closed 1m candle, if all gates true AND risk/margin validation passes AND position limits not reached AND no active cooldown. Set entryPrice = lastClosed1m.close (float, no rounding). Log RSI_VALUES, RSI_CROSS_UP, ENTRY_CHECK events with gate breakdown.",
+      "reqIds": [
+        "REQ-6"
+      ],
+      "version": 1
+    },
+    {
+      "id": "feature-implement-paper-trading-risk-model-starting-equity-100-00-usdt-risk-pct-0-01-1-per-trade-fixed-stop-distance-sl-dist-pct-0-006-0-6-from-entry-calculate-stopprice-entryprice-1-0-006-tp1-entryprice-1-0-01-tp2-entryprice-1-0-02-size-position-riskusdt-equity-0-01-riskperunit-entryprice-stopprice-qty-riskusdt-riskperunit-notional-qty-entryprice-simulate-5x-leverage-requiredmargin-notional-5-reject-if-any-value-is-not-finite-entry-0-stop-0-riskperunit-0-requiredmargin-equity-0-90-max-open-reached-2-symbol-already-open-or-cooldown-active-log-reject-events-with-reason",
+      "title": "Implement paper trading risk model: starting equity 100.00 USDT, RISK_PCT = 0.01 (1% per trade), fixed stop distance SL_DIST_PCT = 0.006 (0.6% from entry). Calculate stopPrice = entryPrice * (1 - 0.006), TP1 = entryPrice * (1 + 0.01), TP2 = entryPrice * (1 + 0.02). Size position: riskUSDT = equity * 0.01, riskPerUnit = |entryPrice - stopPrice|, qty = riskUSDT / riskPerUnit, notional = qty * entryPrice. Simulate 5x leverage: requiredMargin = notional / 5. Reject if: any value is not finite, entry <= 0, stop <= 0, riskPerUnit <= 0, requiredMargin > equity * 0.90, max open reached (>=2), symbol already open, or cooldown active. Log REJECT events with reason.",
+      "reqIds": [
+        "REQ-7"
+      ],
+      "version": 1
+    },
+    {
+      "id": "feature-implement-position-exit-evaluation-on-every-engine-tick-using-closed-1m-candles-only-for-each-open-position-get-price-lastclosed1m-close-must-be-finite-check-in-order-1-if-price-stopprice-then-sl-hit-and-close-position-2-else-if-price-tp2-then-tp2-hit-and-close-position-3-else-if-price-tp1-and-tp1hit-then-set-tp1hit-true-flag-only-no-partial-exit-4-else-if-now-entrytime-45-minutes-then-time-stop-and-close-position-log-tp1-hit-tp2-hit-sl-hit-time-stop-events-on-close-calculate-pnl-update-equity-log-trade-closed-with-pnlusdt-equity",
+      "title": "Implement position exit evaluation on every engine tick using closed 1m candles only. For each OPEN position: get price = lastClosed1m.close (must be finite). Check in order: (1) if price <= stopPrice then SL_HIT and close position, (2) else if price >= tp2 then TP2_HIT and close position, (3) else if price >= tp1 and !tp1Hit then set tp1Hit=true flag only (no partial exit), (4) else if now - entryTime >= 45 minutes then TIME_STOP and close position. Log TP1_HIT, TP2_HIT, SL_HIT, TIME_STOP events. On close: calculate PnL, update equity, log TRADE_CLOSED with {pnlUSDT, equity}.",
+      "reqIds": [
+        "REQ-8"
+      ],
+      "version": 1
+    },
+    {
+      "id": "feature-implement-singleton-engine-loop-with-15-second-tick-interval-store-enginerunid-increments-on-start-and-intervalref-runtime-only-not-persisted-each-tick-sequence-1-fetch-refresh-top5-if-15min-boundary-reached-or-first-tick-2-build-enginewatchset-top5-open-symbols-3-for-each-symbol-in-enginewatchset-fetch-1m-klines-limit-2-and-update-lastclosed1m-monotonic-4-for-each-top5-symbol-fetch-1m-5m-15m-klines-limit-200-and-compute-rsi-for-all-timeframes-then-evaluate-entry-gates-5-evaluate-exits-for-all-open-positions-using-lastclosed1m-log-engine-start-engine-stop-engine-tick-events",
+      "title": "Implement singleton engine loop with 15-second tick interval. Store engineRunId (increments on start) and intervalRef (runtime-only, not persisted). Each tick sequence: (1) Fetch/refresh TOP5 if 15min boundary reached or first tick, (2) Build engineWatchSet = TOP5 ∪ OPEN symbols, (3) For each symbol in engineWatchSet fetch 1m klines limit=2 and update lastClosed1m (monotonic), (4) For each TOP5 symbol fetch 1m/5m/15m klines limit=200 and compute RSI for all timeframes then evaluate entry gates, (5) Evaluate exits for all OPEN positions using lastClosed1m. Log ENGINE_START, ENGINE_STOP, ENGINE_TICK events.",
+      "reqIds": [
+        "REQ-11"
+      ],
+      "version": 1
+    },
+    {
+      "id": "feature-implement-zustand-store-with-localstorage-persistence-persisted-state-enginerunning-boolean-equity-number-default-100-00-openpositions-array-trades-array-for-journal-stats-snapshot-optional-derived-logs-ring-buffer-1000-entries-max-cooldowns-map-symbol-to-cooldownuntilms-top5symbols-current-array-caches-lastclosed1m-map-rsicache-map-runtime-only-not-persisted-intervalid-runid-action-functions-use-partialize-to-exclude-functions-and-runtime-fields-but-include-trades-stats-equity-provide-actions-for-startengine-stopengine-resetstorage",
+      "title": "Implement Zustand store with localStorage persistence. Persisted state: engineRunning (boolean), equity (number, default 100.00), openPositions (array), trades (array for journal), stats snapshot (optional derived), logs (ring buffer, 1000 entries max), cooldowns (map symbol to cooldownUntilMs), top5Symbols (current array), caches (lastClosed1m map, rsiCache map). Runtime-only (NOT persisted): _intervalId, _runId, action functions. Use partialize to exclude functions and runtime fields but INCLUDE trades/stats/equity. Provide actions for: startEngine, stopEngine, resetStorage.",
+      "reqIds": [
+        "REQ-12"
+      ],
+      "version": 1
+    },
+    {
+      "id": "feature-build-mobile-first-ui-with-4-tabs-1-top5-shows-top5-list-with-volume-ranking-and-sticky-open-symbols-display-symbol-cards-with-rsi15m-rsi5m-rsi1m-values-timestamps-status-badge-idle-signal-ready-open-cooldown-entry-preview-numbers-entry-price-sl-tp1-tp2-qty-notional-margin-gate-breakdown-15m-5m-1mcross-gates-include-start-stop-reset-engine-controls-2-trades-journal-table-with-columns-id-symbol-entrytime-exittime-duration-entry-price-exit-price-pnlusdt-pnlpct-exitreason-tp1hit-flag-filters-for-24h-7d-all-and-symbol-select-3-stats-display-totaltrades-winrate-avgwin-avgloss-expectancy-profitfactor-maxdrawdown-equitynow-optional-equity-curve-4-logs-never-blank-panel-with-header-line-logs-panel-ok-count-n-time-hh-mm-ss-dark-background-forced-scrollable-max-50vh-shows-last-1000-entries-all-tabs-use-tailwind-css-for-styling",
+      "title": "Build mobile-first UI with 4 tabs: (1) TOP5 - shows TOP5 list with volume ranking and sticky OPEN symbols, display symbol cards with RSI15m/RSI5m/RSI1m values + timestamps, status badge (IDLE/SIGNAL_READY/OPEN/COOLDOWN), entry preview numbers (entry price, SL, TP1, TP2, qty, notional, margin), gate breakdown (15m/5m/1mCross gates), include Start/Stop/Reset engine controls; (2) TRADES - journal table with columns: id, symbol, entryTime, exitTime, duration, entry price, exit price, pnlUSDT, pnlPct, exitReason, tp1Hit flag, filters for 24h/7d/all and symbol select; (3) STATS - display totalTrades, winRate, avgWin, avgLoss, expectancy, profitFactor, maxDrawdown, equityNow, optional equity curve; (4) LOGS - never blank panel with header line 'LOGS PANEL OK | count=N | time=HH:MM:SS', dark background forced, scrollable (max 50vh), shows last 1000 entries. All tabs use Tailwind CSS for styling.",
+      "reqIds": [
+        "REQ-13"
+      ],
+      "version": 1
+    },
+    {
+      "id": "feature-implement-csv-and-json-export-functionality-for-trades-journal-export-buttons-in-trades-tab-download-csv-download-json-generate-timestamped-filenames-g100-trades-yyyymmdd-hhmm-csv-and-g100-trades-yyyymmdd-hhmm-json-include-all-trade-fields-id-symbol-entrytime-exittime-duration-entryprice-exitprice-pnlusdt-pnlpct-exitreason-tp1hit-log-export-done-event-with-type-count",
+      "title": "Implement CSV and JSON export functionality for trades journal. Export buttons in TRADES tab: Download CSV, Download JSON. Generate timestamped filenames: g100_trades_YYYYMMDD_HHMM.csv and g100_trades_YYYYMMDD_HHMM.json. Include all trade fields: id, symbol, entryTime, exitTime, duration, entryPrice, exitPrice, pnlUSDT, pnlPct, exitReason, tp1Hit. Log EXPORT_DONE event with {type, count}.",
+      "reqIds": [
+        "REQ-14"
+      ],
+      "version": 1
+    },
+    {
+      "id": "feature-implement-global-errorboundary-component-wrapping-entire-app-on-crash-display-red-fallback-panel-showing-error-stack-trace-and-reset-storage-button-that-clears-localstorage-and-reloads-page-add-defensive-ui-coding-array-isarray-checks-for-trades-logs-arrays-default-to-empty-arrays-objects-if-undefined-all-buttons-use-type-button-to-prevent-page-reload-zero-nan-rendering-anywhere-use-fallback-values-or-guards",
+      "title": "Implement global ErrorBoundary component wrapping entire App. On crash: display red fallback panel showing error stack trace and 'RESET STORAGE' button that clears localStorage and reloads page. Add defensive UI coding: Array.isArray checks for trades/logs arrays, default to empty arrays/objects if undefined, all buttons use type='button' to prevent page reload, zero NaN rendering anywhere (use fallback values or guards).",
+      "reqIds": [
+        "REQ-16"
+      ],
+      "version": 1
+    },
+    {
+      "id": "feature-modify-engineloop-ts-to-check-if-top5symbols-length-0-on-the-first-engine-tick-regardless-of-15-minute-boundary-alignment-if-empty-immediately-fetch-universe-data-exchangeinfo-24hr-ticker-apply-filters-usdt-pairs-quotevolume-20m-exclude-stablecoins-majors-compute-top5-ranked-by-quotevolume-descending-and-call-set-top5symbols-to-initialize-the-watchlist-this-initialization-must-run-before-building-enginewatchset-and-must-not-require-any-previous-top5-state-to-exist",
+      "title": "Modify engineLoop.ts to check if top5Symbols.length === 0 on the FIRST engine tick (regardless of 15-minute boundary alignment). If empty, immediately fetch universe data (exchangeInfo + 24hr ticker), apply filters (USDT pairs, quoteVolume >= 20M, exclude stablecoins/majors), compute TOP5 ranked by quoteVolume descending, and call set({ top5Symbols }) to initialize the watchlist. This initialization must run before building engineWatchSet and must not require any previous TOP5 state to exist.",
+      "reqIds": [
+        "REQ-17"
+      ],
+      "version": 1
+    },
+    {
+      "id": "feature-add-universe-filtered-log-event-during-top5-initialization-with-payload-containing-before-number-total-usdt-pairs-before-filtering-after-number-symbols-remaining-after-all-filters-applied-add-top5-set-log-event-immediately-after-top5-computation-with-payload-containing-symbols-string-the-5-selected-symbols-both-events-must-be-logged-during-the-first-tick-initialization-when-top5symbols-length-0",
+      "title": "Add UNIVERSE_FILTERED log event during TOP5 initialization with payload containing { before: number (total USDT pairs before filtering), after: number (symbols remaining after all filters applied) }. Add TOP5_SET log event immediately after TOP5 computation with payload containing { symbols: string[] (the 5 selected symbols) }. Both events must be logged during the first-tick initialization when top5Symbols.length === 0.",
+      "reqIds": [
+        "REQ-18"
+      ],
+      "version": 1
+    },
+    {
+      "id": "feature-implement-safefetch-utility-function-as-global-transport-layer-with-base-endpoint-https-api-binance-com-5000ms-timeout-using-abortcontroller-2-retry-attempts-with-500ms-delay-between-retries-never-throws-errors-returns-null-on-final-failure-logs-fetch-retry-event-on-each-retry-attempt-and-fetch-fail-event-on-final-failure-with-url-error-payload",
+      "title": "Implement safeFetch utility function as global transport layer with base endpoint https://api.binance.com, 5000ms timeout using AbortController, 2 retry attempts with 500ms delay between retries, never throws errors (returns null on final failure), logs FETCH_RETRY event on each retry attempt and FETCH_FAIL event on final failure with {url, error} payload",
+      "reqIds": [
+        "REQ-19"
+      ],
+      "version": 1
+    },
+    {
+      "id": "feature-replace-all-existing-binance-api-fetch-calls-in-binanceapi-ts-with-safefetch-utility-change-base-url-from-https-data-api-binance-vision-to-https-api-binance-com-for-all-endpoints",
+      "title": "Replace all existing Binance API fetch calls in binanceApi.ts with safeFetch utility, change base URL from https://data-api.binance.vision to https://api.binance.com for all endpoints",
+      "reqIds": [
+        "REQ-20"
+      ],
+      "version": 1
+    },
+    {
+      "id": "feature-replace-fetchexchangeinfo-and-fetch24hrtickers-functions-with-single-fetchuniverse24h-function-that-calls-https-api-binance-com-api-v3-ticker-24hr-using-safefetch-validates-result-is-array-logs-universe-empty-event-and-returns-empty-array-if-result-is-not-array-or-null-never-throws-errors",
+      "title": "Replace fetchExchangeInfo and fetch24hrTickers functions with single fetchUniverse24h function that calls https://api.binance.com/api/v3/ticker/24hr using safeFetch, validates result is array, logs UNIVERSE_EMPTY event and returns empty array if result is not array or null, never throws errors",
+      "reqIds": [
+        "REQ-21"
+      ],
+      "version": 1
+    },
+    {
+      "id": "feature-modify-universefilter-ts-to-use-new-fetchuniverse24h-function-lower-quotevolume-filter-threshold-from-20-000-000-to-5-000-000-convert-quotevolume-using-number-implement-fallback-logic-if-filtered-array-length-is-0-then-log-universe-fallback-event-and-take-first-20-usdt-ending-symbols-from-raw-universe-without-volume-filter",
+      "title": "Modify universeFilter.ts to use new fetchUniverse24h function, lower quoteVolume filter threshold from 20,000,000 to 5,000,000, convert quoteVolume using Number(), implement fallback logic: if filtered array length is 0 then log UNIVERSE_FALLBACK event and take first 20 USDT-ending symbols from raw universe without volume filter",
+      "reqIds": [
+        "REQ-22"
+      ],
+      "version": 1
+    },
+    {
+      "id": "feature-add-300ms-delay-between-per-symbol-kline-fetch-calls-only-not-between-other-fetch-types-or-entire-engine-loop-implement-using-settimeout-or-promise-based-delay-helper-function",
+      "title": "Add 300ms delay between per-symbol kline fetch calls only (not between other fetch types or entire engine loop), implement using setTimeout or Promise-based delay helper function",
+      "reqIds": [
+        "REQ-23"
+      ],
+      "version": 1
+    },
+    {
+      "id": "feature-modify-engineloop-ts-to-handle-all-safefetch-null-returns-gracefully-top5-refresh-failures-log-top5-refresh-fail-event-but-continue-engine-execution-kline-fetch-failures-skip-that-symbol-but-continue-processing-other-symbols-no-fetch-error-may-stop-engine-tick-or-crash-the-engine-ensure-zero-unhandled-promise-rejections-in-engine-loop",
+      "title": "Modify engineLoop.ts to handle all safeFetch null returns gracefully: TOP5 refresh failures log TOP5_REFRESH_FAIL event but continue engine execution, kline fetch failures skip that symbol but continue processing other symbols, no fetch error may stop ENGINE_TICK or crash the engine, ensure zero unhandled promise rejections in engine loop",
+      "reqIds": [
+        "REQ-24"
+      ],
+      "version": 1
+    },
+    {
+      "id": "feature-add-new-log-event-types-to-store-ts-logentry-fetch-retry-fetch-fail-universe-empty-universe-fallback-top5-refresh-fail-top5-skip-empty-ensure-all-new-events-follow-existing-log-structure-with-timestamp-and-payload",
+      "title": "Add new log event types to store.ts LogEntry: FETCH_RETRY, FETCH_FAIL, UNIVERSE_EMPTY, UNIVERSE_FALLBACK, TOP5_REFRESH_FAIL, TOP5_SKIP_EMPTY, ensure all new events follow existing log structure with timestamp and payload",
+      "reqIds": [
+        "REQ-25"
+      ],
+      "version": 1
+    },
+    {
+      "id": "feature-update-logstab-tsx-to-display-new-log-event-types-fetch-retry-fetch-fail-universe-empty-universe-fallback-top5-refresh-fail-top5-skip-empty-with-appropriate-color-coding-red-for-fetch-fail-and-top5-refresh-fail-yellow-for-fetch-retry-and-universe-fallback-default-color-for-universe-empty-and-top5-skip-empty",
+      "title": "Update LogsTab.tsx to display new log event types (FETCH_RETRY, FETCH_FAIL, UNIVERSE_EMPTY, UNIVERSE_FALLBACK, TOP5_REFRESH_FAIL, TOP5_SKIP_EMPTY) with appropriate color coding: red for FETCH_FAIL and TOP5_REFRESH_FAIL, yellow for FETCH_RETRY and UNIVERSE_FALLBACK, default color for UNIVERSE_EMPTY and TOP5_SKIP_EMPTY",
+      "reqIds": [
+        "REQ-26"
+      ],
+      "version": 1
+    }
+  ],
+  "new_feature_requests": [
+    {
+      "id": "AR-1",
+      "summary": "Build G100 RSI 3TF Paper Engine with frontend-only React app using Binance REST APIs",
+      "reqIds": [],
+      "status": "pending"
+    },
+    {
+      "id": "AR-2",
+      "summary": "Implement RSI(27) calculation on 1m/5m/15m timeframes with Wilder's smoothing for LONG-only strategy",
+      "reqIds": [
+        "AR-1"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "AR-3",
+      "summary": "Create universe filtering: USDT pairs, 20M+ volume, exclude BTC/ETH/SOL/stables, rank by quoteVolume DESC",
+      "reqIds": [
+        "AR-1"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "AR-4",
+      "summary": "Implement TOP5 watchlist rotation every 15min with sticky OPEN positions until CLOSED",
+      "reqIds": [
+        "AR-1",
+        "AR-3"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "AR-5",
+      "summary": "Build 3TF entry logic: 55<RSI15m<70, RSI5m>50, RSI1m crosses up >45 with max 2 simultaneous OPEN positions",
+      "reqIds": [
+        "AR-1",
+        "AR-2"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "AR-6",
+      "summary": "Implement paper trading: 1% equity risk, 0.6% fixed stop, TP1 flag at +1%, TP2 exit at +2%, 45min time stop, 5x leverage simulation",
+      "reqIds": [
+        "AR-1"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "AR-7",
+      "summary": "Add 30min cooldown after SL only (no cooldown after TP2 or TIME_STOP)",
+      "reqIds": [
+        "AR-1",
+        "AR-6"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "AR-8",
+      "summary": "Create Zustand store with persistence for equity, trades, positions, cooldowns, logs, and caches",
+      "reqIds": [
+        "AR-1"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "AR-9",
+      "summary": "Build mobile-first UI with 4 tabs: TOP5 (engine controls + symbol cards with RSI values), TRADES (journal table), STATS (metrics), LOGS (event buffer)",
+      "reqIds": [
+        "AR-1"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "AR-10",
+      "summary": "Add CSV/JSON export for trades with timestamped filenames",
+      "reqIds": [
+        "AR-1",
+        "AR-9"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "AR-11",
+      "summary": "Implement ErrorBoundary with fallback UI and RESET STORAGE button for crash recovery",
+      "reqIds": [
+        "AR-1",
+        "AR-9"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "AR-12",
+      "summary": "Add comprehensive logging system with 1000-entry ring buffer for all engine events (no rate limiting)",
+      "reqIds": [
+        "AR-1"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "AR-13",
+      "summary": "Implement strict closed-candle-only logic with monotonic closeTime guards and 1-candle latency handling",
+      "reqIds": [
+        "AR-1",
+        "AR-2"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "AR-14",
+      "summary": "Create 15s polling engine loop with 300ms delays between symbol fetches and >10 fetch fail abort logic",
+      "reqIds": [
+        "AR-1"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "AR-16",
+      "summary": "Implement strict closed-candle-only logic with monotonic closeTime guards. For limit=2 kline fetches, use klines[0] (older candle) as closedCandidate (1-candle latency acceptable). Update cache only if incoming.closeTime > stored.closeTime. Store lastClosed1m cache as map of symbol to {close, closeTime}.",
+      "reqIds": [
+        "REQ-2"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "AR-19",
+      "summary": "Implement TOP5 watchlist rotation every 15 minutes on deterministic schedule (aligned to engine start, +15m boundaries). Apply stickiness: any symbol with OPEN position stays in watchlist (engineWatchSet) until CLOSED, even if it leaves TOP5. Build engineWatchSet as UNION of top5Symbols and openPositionSymbols. Log TOP5_SET event with {symbols} array.",
+      "reqIds": [
+        "REQ-5"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "AR-23",
+      "summary": "Implement 30-minute cooldown after SL exits only (no cooldown after TP2 or TIME_STOP). Store cooldowns as map of symbol to cooldownUntilMs timestamp. Cooldown persists across TOP5 rotation even if symbol leaves and re-enters watchlist. Check cooldownActive(symbol) before allowing new entry. Log cooldown activation and expiration events.",
+      "reqIds": [
+        "REQ-9"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "AR-24",
+      "summary": "Implement position limits: LONG-only strategy, maximum 2 simultaneous OPEN positions, each position must be on different symbols (dedup check), maximum 1 OPEN position per symbol. Reject new entries if maxOpenReached (openPositions.length >= 2) or symbolAlreadyOpen. Log rejection reasons.",
+      "reqIds": [
+        "REQ-10"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "AR-29",
+      "summary": "Implement comprehensive logging system with 1000-entry ring buffer (no rate limiting during diagnostics). Log events: ENGINE_START, ENGINE_STOP, ENGINE_TICK, UNIVERSE_FILTERED {before, after, excludedStable, excludedMajors}, TOP5_SET {symbols}, FETCH_OK/FETCH_FAIL {url, symbol, interval}, RSI_VALUES {symbol, rsi1m, rsi5m, rsi15m}, RSI_CROSS_UP {symbol, prev, curr}, ENTRY_CHECK {symbol, gates}, REJECT {symbol, reason}, TRADE_OPEN {symbol, entry, sl, tp1, tp2, qty, margin}, TP1_HIT, TP2_HIT, SL_HIT, TIME_STOP, TRADE_CLOSED {pnlUSDT, equity}, EXPORT_DONE {type, count}. Each log entry includes timestamp and event type. Store logs in persisted state (optional but recommended).",
+      "reqIds": [
+        "REQ-15"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "AR-30",
+      "summary": "Implement safeFetch transport layer with 5s timeout, 2 retries, 500ms retry delay, never throws, returns null on failure, logs FETCH_RETRY and FETCH_FAIL events",
+      "reqIds": [
+        "REQ-1"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "AR-31",
+      "summary": "Switch Binance endpoint from data-api.binance.vision to api.binance.com, use /api/v3/ticker/24hr for universe data (replacing exchangeInfo + ticker combo)",
+      "reqIds": [
+        "REQ-1",
+        "REQ-4"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "AR-32",
+      "summary": "Lower universe volume filter from 20M to 5M quoteVolume, add fallback logic: if filtered.length === 0, take first 20 USDT pairs without volume filter and log UNIVERSE_FALLBACK",
+      "reqIds": [
+        "REQ-4"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "AR-33",
+      "summary": "Add 300ms delay between per-symbol kline fetches only (not entire engine loop), implement throttling for rate limit compliance",
+      "reqIds": [
+        "REQ-1",
+        "REQ-11"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "AR-34",
+      "summary": "Add transport error handling guarantees: no fetch error may crash engine or stop ENGINE_TICK, TOP5 refresh failures log TOP5_REFRESH_FAIL but continue, zero unhandled promise rejections",
+      "reqIds": [
+        "REQ-1",
+        "REQ-11"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "AR-35",
+      "summary": "Add new log events: FETCH_RETRY, FETCH_FAIL, UNIVERSE_EMPTY, UNIVERSE_FALLBACK, TOP5_SKIP_EMPTY for transport diagnostics",
+      "reqIds": [
+        "REQ-15"
+      ],
+      "status": "pending"
+    }
+  ],
+  "projectName": "G100 RSI 3TF Paper Engine",
+  "clarification_mode": "instant",
+  "clarification_rounds": 0
+}

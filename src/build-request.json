@@ -1,0 +1,212 @@
+{
+  "kind": "build_request",
+  "title": "G100 Transport Stabilization Patch",
+  "projectName": "G100 RSI 3TF Paper Engine",
+  "priority": "high",
+  "requirements": [
+    {
+      "id": "REQ-19",
+      "text": "Implement safeFetch utility function as global transport layer with base endpoint https://api.binance.com, 5000ms timeout using AbortController, 2 retry attempts with 500ms delay between retries, never throws errors (returns null on final failure), logs FETCH_RETRY event on each retry attempt and FETCH_FAIL event on final failure with {url, error} payload",
+      "target": "frontend",
+      "source": {
+        "messageIds": [
+          "msg-5"
+        ],
+        "quotes": [
+          "safeFetch(url, options?, retries=2)",
+          "Timeout: 5000ms",
+          "Retries: 2",
+          "Retry delay: 500ms",
+          "Never throw",
+          "Return null on final failure"
+        ]
+      },
+      "acceptanceCriteria": [
+        "safeFetch function accepts url, optional fetch options, and retries parameter (default 2)",
+        "AbortController terminates request after 5000ms timeout",
+        "On non-ok response or network error, retry up to 2 times with 500ms delay",
+        "FETCH_RETRY event logged before each retry with attempt number",
+        "FETCH_FAIL event logged on final failure with url and error message",
+        "Function returns null on final failure, never propagates error upward",
+        "Function returns parsed JSON response on success"
+      ]
+    },
+    {
+      "id": "REQ-20",
+      "text": "Replace all existing Binance API fetch calls in binanceApi.ts with safeFetch utility, change base URL from https://data-api.binance.vision to https://api.binance.com for all endpoints",
+      "target": "frontend",
+      "source": {
+        "messageIds": [
+          "msg-5"
+        ],
+        "quotes": [
+          "Endpoint base: https://api.binance.com",
+          "REPLACE ALL FETCH WITH SAFE TRANSPORT LAYER"
+        ]
+      },
+      "acceptanceCriteria": [
+        "All fetch calls in binanceApi.ts replaced with safeFetch",
+        "Base URL changed to https://api.binance.com",
+        "Existing endpoint paths preserved (/api/v3/klines, etc.)",
+        "Functions return null when safeFetch returns null",
+        "No unhandled promise rejections in binanceApi.ts"
+      ]
+    },
+    {
+      "id": "REQ-21",
+      "text": "Replace fetchExchangeInfo and fetch24hrTickers functions with single fetchUniverse24h function that calls https://api.binance.com/api/v3/ticker/24hr using safeFetch, validates result is array, logs UNIVERSE_EMPTY event and returns empty array if result is not array or null, never throws errors",
+      "target": "frontend",
+      "source": {
+        "messageIds": [
+          "msg-5"
+        ],
+        "quotes": [
+          "Use ONLY: https://api.binance.com/api/v3/ticker/24hr",
+          "If result not array → log UNIVERSE_EMPTY and return []",
+          "Never throw"
+        ]
+      },
+      "acceptanceCriteria": [
+        "fetchUniverse24h function created calling /api/v3/ticker/24hr",
+        "Uses safeFetch for transport",
+        "Returns empty array if safeFetch returns null",
+        "Returns empty array if result is not Array.isArray",
+        "Logs UNIVERSE_EMPTY event when returning empty array",
+        "Function never throws errors"
+      ]
+    },
+    {
+      "id": "REQ-22",
+      "text": "Modify universeFilter.ts to use new fetchUniverse24h function, lower quoteVolume filter threshold from 20,000,000 to 5,000,000, convert quoteVolume using Number(), implement fallback logic: if filtered array length is 0 then log UNIVERSE_FALLBACK event and take first 20 USDT-ending symbols from raw universe without volume filter",
+      "target": "frontend",
+      "source": {
+        "messageIds": [
+          "msg-5"
+        ],
+        "quotes": [
+          "Filter quoteVolume > 5_000_000",
+          "Convert quoteVolume using Number()",
+          "If filtered.length === 0: Log UNIVERSE_FALLBACK, Take first 20 USDT pairs without volume filter"
+        ]
+      },
+      "acceptanceCriteria": [
+        "quoteVolume filter changed to > 5,000,000",
+        "quoteVolume parsed using Number() function",
+        "If filtered.length === 0 after all filters applied, log UNIVERSE_FALLBACK",
+        "Fallback selects first 20 symbols ending with 'USDT' from raw universe",
+        "Fallback bypasses volume filter but keeps USDT requirement",
+        "System never produces empty TOP5 due to filtering",
+        "Existing UNIVERSE_FILTERED log event preserved with {before, after} counts"
+      ]
+    },
+    {
+      "id": "REQ-23",
+      "text": "Add 300ms delay between per-symbol kline fetch calls only (not between other fetch types or entire engine loop), implement using setTimeout or Promise-based delay helper function",
+      "target": "frontend",
+      "source": {
+        "messageIds": [
+          "msg-5"
+        ],
+        "quotes": [
+          "Add 300ms delay BETWEEN per-symbol kline fetches only",
+          "Do NOT delay entire engine loop"
+        ]
+      },
+      "acceptanceCriteria": [
+        "300ms delay added between consecutive kline fetch calls for different symbols",
+        "Delay only applies to per-symbol kline fetching in engineLoop.ts",
+        "No delay added to universe fetch or other API calls",
+        "Engine tick interval remains 15 seconds",
+        "Delay implemented using setTimeout or async delay helper"
+      ]
+    },
+    {
+      "id": "REQ-24",
+      "text": "Modify engineLoop.ts to handle all safeFetch null returns gracefully: TOP5 refresh failures log TOP5_REFRESH_FAIL event but continue engine execution, kline fetch failures skip that symbol but continue processing other symbols, no fetch error may stop ENGINE_TICK or crash the engine, ensure zero unhandled promise rejections in engine loop",
+      "target": "frontend",
+      "source": {
+        "messageIds": [
+          "msg-5"
+        ],
+        "quotes": [
+          "No fetch error may crash engine",
+          "No fetch error may stop ENGINE_TICK",
+          "TOP5 refresh failure must log TOP5_REFRESH_FAIL but continue",
+          "No unhandled promise rejections allowed"
+        ]
+      },
+      "acceptanceCriteria": [
+        "If TOP5 refresh (fetchUniverse24h) returns empty array, log TOP5_REFRESH_FAIL and continue with existing TOP5",
+        "If kline fetch returns null for a symbol, skip RSI calculation for that symbol and continue loop",
+        "ENGINE_TICK event logged on every tick regardless of fetch failures",
+        "Engine never crashes due to fetch errors",
+        "All promises properly caught with try/catch or .catch()",
+        "Engine remains deterministic and stable"
+      ]
+    },
+    {
+      "id": "REQ-25",
+      "text": "Add new log event types to store.ts LogEntry: FETCH_RETRY, FETCH_FAIL, UNIVERSE_EMPTY, UNIVERSE_FALLBACK, TOP5_REFRESH_FAIL, TOP5_SKIP_EMPTY, ensure all new events follow existing log structure with timestamp and payload",
+      "target": "frontend",
+      "source": {
+        "messageIds": [
+          "msg-5"
+        ],
+        "quotes": [
+          "Add logs: FETCH_RETRY, FETCH_FAIL, UNIVERSE_EMPTY, UNIVERSE_FALLBACK, TOP5_SET, TOP5_SKIP_EMPTY"
+        ]
+      },
+      "acceptanceCriteria": [
+        "FETCH_RETRY event type added to LogEntry union type",
+        "FETCH_FAIL event type added to LogEntry union type",
+        "UNIVERSE_EMPTY event type added to LogEntry union type",
+        "UNIVERSE_FALLBACK event type added to LogEntry union type",
+        "TOP5_REFRESH_FAIL event type added to LogEntry union type",
+        "TOP5_SKIP_EMPTY event type added to LogEntry union type",
+        "All new event types compatible with existing log buffer (max 1000 entries)"
+      ]
+    },
+    {
+      "id": "REQ-26",
+      "text": "Update LogsTab.tsx to display new log event types (FETCH_RETRY, FETCH_FAIL, UNIVERSE_EMPTY, UNIVERSE_FALLBACK, TOP5_REFRESH_FAIL, TOP5_SKIP_EMPTY) with appropriate color coding: red for FETCH_FAIL and TOP5_REFRESH_FAIL, yellow for FETCH_RETRY and UNIVERSE_FALLBACK, default color for UNIVERSE_EMPTY and TOP5_SKIP_EMPTY",
+      "target": "frontend",
+      "source": {
+        "messageIds": [
+          "msg-5"
+        ]
+      },
+      "acceptanceCriteria": [
+        "FETCH_FAIL and TOP5_REFRESH_FAIL events display in red",
+        "FETCH_RETRY and UNIVERSE_FALLBACK events display in yellow/warning color",
+        "UNIVERSE_EMPTY and TOP5_SKIP_EMPTY events display in default text color",
+        "All new event types render properly in logs panel",
+        "Payload data displayed for all new event types"
+      ]
+    }
+  ],
+  "constraints": [
+    "Do NOT change RSI calculation logic or RSI(27) period",
+    "Do NOT change entry gate logic (55 < RSI15m < 70, RSI5m > 50, RSI1m cross above 45)",
+    "Do NOT change position sizing, stop loss (0.6%), or take profit levels (1%, 2%)",
+    "Do NOT change cooldown rules (30min after SL only)",
+    "Do NOT change engine tick interval (15 seconds)",
+    "Do NOT change any strategy rules or trading logic",
+    "Do NOT modify immutable frontend paths: useInternetIdentity.ts, useInternetIdentity.tsx, useActor.ts, main.tsx, components/ui/*",
+    "All fetch calls must use the new safeFetch utility",
+    "The engine must never crash or stop due to transport errors"
+  ],
+  "nonGoals": [
+    "Changing the RSI calculation method or period",
+    "Adding new entry/exit conditions beyond transport fixes",
+    "Modifying position sizing or risk management parameters",
+    "Adding WebSocket or real-time data streams",
+    "Implementing order execution on live exchange",
+    "Adding authentication or user accounts",
+    "Changing the UI layout or adding new tabs",
+    "Modifying the 15-second tick interval"
+  ],
+  "imageRequirements": {
+    "required": [],
+    "edits": []
+  }
+}
