@@ -50,13 +50,13 @@ function getLogColor(eventType: string): string {
     return 'text-red-400';
   }
   
-  // Yellow for warnings and retries
-  if (eventType === 'FETCH_RETRY' || eventType === 'UNIVERSE_FALLBACK') {
+  // Yellow for warnings, retries, and parse errors
+  if (eventType === 'FETCH_RETRY' || eventType === 'UNIVERSE_FALLBACK' || eventType === 'UNIVERSE_VOLUME_PARSE_ERROR') {
     return 'text-yellow-400';
   }
   
-  // Default color for informational events
-  if (eventType === 'UNIVERSE_EMPTY' || eventType === 'TOP5_SKIP_EMPTY') {
+  // Default color for informational and debug events (including UNIVERSE_SOURCE)
+  if (eventType === 'UNIVERSE_SOURCE' || eventType === 'UNIVERSE_EMPTY' || eventType === 'TOP5_SKIP_EMPTY' || eventType === 'UNIVERSE_DEBUG_SAMPLE' || eventType === 'UNIVERSE_FILTER_RESULT') {
     return 'text-gray-400';
   }
   

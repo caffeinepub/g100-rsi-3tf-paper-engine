@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1.0.0",
-  "projectStateVersion": 7,
-  "summary": "G100 RSI 3TF Paper Engine - A frontend-only paper trading bot for LONG-only positions on TOP5 USDT symbols ranked by 24h quoteVolume. Uses RSI(27) on 1m/5m/15m timeframes with strict entry gates: 55<RSI15m<70, RSI5m>50, RSI1m crosses up >45. Max 2 simultaneous positions with 1% equity risk per trade, 0.6% fixed stop loss, TP1 flag at +1%, TP2 exit at +2%, and 45min time stop. Features 30min cooldown after SL only, Binance REST API integration (data-api.binance.vision), closed-candle-only logic with monotonic guards, Zustand persistence, mobile-first UI with TOP5/TRADES/STATS/LOGS tabs, CSV/JSON export, and comprehensive logging. Built for collecting trading statistics with zero crashes and no state corruption.",
+  "projectStateVersion": 15,
+  "summary": "G100 RSI 3TF Paper Engine - A frontend-only paper trading bot for LONG-only positions on TOP5 USDT-M PERPETUAL FUTURES ranked by 24h quoteVolume. Uses RSI(27) on 1m/5m/15m timeframes with strict entry gates: 55<RSI15m<70, RSI5m>50, RSI1m crosses up >45. Max 2 simultaneous positions with 1% equity risk per trade, 0.6% fixed stop loss, TP1 flag at +1%, TP2 exit at +2%, and 45min time stop. Features 30min cooldown after SL only, Binance Futures REST API integration (fapi.binance.com), closed-candle-only logic with monotonic guards, Zustand persistence, mobile-first UI with TOP5/TRADES/STATS/LOGS tabs, CSV/JSON export, and comprehensive logging. Built for collecting trading statistics with zero crashes and no state corruption.",
   "architectural_notes": [
     "Deterministic closed-candle-only logic with monotonic closeTime guards to prevent state corruption",
     "Zustand state management with persistence (partialize excludes runtime fields like _intervalId/_runId)",
@@ -11,8 +11,8 @@
     "Defensive UI rendering with Array.isArray checks and default empty arrays/objects for undefined values",
     "Mobile-first responsive design with tab-based navigation (TOP5/TRADES/STATS/LOGS)",
     "safeFetch transport layer with 5s timeout, 2 retries, 500ms delay, never throws (returns null on failure)",
-    "Binance endpoint switched to api.binance.com (from data-api.binance.vision) using /api/v3/ticker/24hr for universe",
-    "Universe volume filter lowered to 5M with fallback to first 20 USDT pairs if filtering produces empty results"
+    "Universe volume filter lowered to 5M with fallback to first 20 USDT pairs if filtering produces empty results",
+    "Universe source switched to Binance Futures USDT-M perpetual contracts only (fapi.binance.com)"
   ],
   "known_issues": [
     "1-candle latency acceptable: using limit=2 with klines[0] as closed candidate (older candle)",
@@ -189,6 +189,134 @@
       "title": "Update LogsTab.tsx to display new log event types (FETCH_RETRY, FETCH_FAIL, UNIVERSE_EMPTY, UNIVERSE_FALLBACK, TOP5_REFRESH_FAIL, TOP5_SKIP_EMPTY) with appropriate color coding: red for FETCH_FAIL and TOP5_REFRESH_FAIL, yellow for FETCH_RETRY and UNIVERSE_FALLBACK, default color for UNIVERSE_EMPTY and TOP5_SKIP_EMPTY",
       "reqIds": [
         "REQ-26"
+      ],
+      "version": 1
+    },
+    {
+      "id": "feature-modify-universefilter-ts-fallback-logic-when-filtered-length-0-sort-the-raw-universe-by-quotevolume-in-descending-order-explicit-sort-do-not-rely-on-api-order-filter-to-usdt-ending-symbols-only-then-return-exactly-the-top-5-symbols-from-the-sorted-result-not-20-the-fallback-must-never-return-more-than-5-symbols",
+      "title": "Modify universeFilter.ts fallback logic: when filtered.length === 0, sort the raw universe by quoteVolume in descending order (explicit sort, do not rely on API order), filter to USDT-ending symbols only, then return exactly the top 5 symbols from the sorted result (not 20). The fallback must never return more than 5 symbols.",
+      "reqIds": [
+        "REQ-27"
+      ],
+      "version": 1
+    },
+    {
+      "id": "feature-modify-universefilter-ts-fallback-logic-to-filter-out-stable-to-stable-trading-pairs-when-filtered-length-0-filter-the-raw-universe-to-usdt-ending-symbols-only-then-exclude-any-symbols-where-the-base-asset-is-a-stablecoin-usdc-busd-tusd-fdusd-usdp-dai-ust-pax-usd1-case-insensitive-matching-after-exclusion-sort-remaining-symbols-by-quotevolume-in-descending-order-and-return-exactly-the-top-5-symbols",
+      "title": "Modify universeFilter.ts fallback logic to filter out stable-to-stable trading pairs. When filtered.length === 0, filter the raw universe to USDT-ending symbols only, then exclude any symbols where the base asset is a stablecoin (USDC, BUSD, TUSD, FDUSD, USDP, DAI, UST, PAX, USD1 - case insensitive matching). After exclusion, sort remaining symbols by quoteVolume in descending order and return exactly the top 5 symbols.",
+      "reqIds": [
+        "REQ-28"
+      ],
+      "version": 1
+    },
+    {
+      "id": "feature-add-universe-debug-sample-log-event-in-universefilter-ts-before-applying-any-filters-log-first-10-elements-of-raw-universe-array-with-payload-containing-symbol-quotevolume-raw-original-string-value-typeof-quotevolume-javascript-type-number-quotevolume-converted-numeric-value-this-temporary-debug-log-must-execute-before-volume-threshold-filtering",
+      "title": "Add UNIVERSE_DEBUG_SAMPLE log event in universeFilter.ts before applying any filters. Log first 10 elements of raw universe array with payload containing: symbol, quoteVolume_raw (original string value), typeof_quoteVolume (JavaScript type), Number_quoteVolume (converted numeric value). This temporary debug log must execute before volume threshold filtering.",
+      "reqIds": [
+        "REQ-29"
+      ],
+      "version": 1
+    },
+    {
+      "id": "feature-add-validation-check-in-universefilter-ts-after-parsing-quotevolume-with-number-item-quotevolume-if-number-isnan-vol-is-true-log-universe-volume-parse-error-event-with-payload-containing-symbol-and-raw-quotevolume-value-do-not-exclude-the-symbol-from-processing-only-log-the-error-for-diagnostic-purposes",
+      "title": "Add validation check in universeFilter.ts after parsing quoteVolume with Number(item.quoteVolume). If Number.isNaN(vol) is true, log UNIVERSE_VOLUME_PARSE_ERROR event with payload containing symbol and raw quoteVolume value. Do NOT exclude the symbol from processing - only log the error for diagnostic purposes.",
+      "reqIds": [
+        "REQ-30"
+      ],
+      "version": 1
+    },
+    {
+      "id": "feature-add-universe-filter-result-log-event-in-universefilter-ts-before-returning-the-filtered-array-log-payload-must-contain-before-rawuniverse-length-after-filtered-length-volumethreshold-current-threshold-value-of-5-000-000-this-trace-log-executes-after-all-filtering-logic-completes-but-before-the-return-statement",
+      "title": "Add UNIVERSE_FILTER_RESULT log event in universeFilter.ts before returning the filtered array. Log payload must contain: before (rawUniverse.length), after (filtered.length), volumeThreshold (current threshold value of 5,000,000). This trace log executes after all filtering logic completes but before the return statement.",
+      "reqIds": [
+        "REQ-31"
+      ],
+      "version": 1
+    },
+    {
+      "id": "feature-add-three-new-log-event-types-to-frontend-src-types-store-ts-logentry-type-union-universe-debug-sample-universe-volume-parse-error-universe-filter-result-ensure-all-three-events-follow-the-existing-log-structure-with-timestamp-and-payload-fields",
+      "title": "Add three new log event types to frontend/src/types/store.ts LogEntry type union: UNIVERSE_DEBUG_SAMPLE, UNIVERSE_VOLUME_PARSE_ERROR, UNIVERSE_FILTER_RESULT. Ensure all three events follow the existing log structure with timestamp and payload fields.",
+      "reqIds": [
+        "REQ-32"
+      ],
+      "version": 1
+    },
+    {
+      "id": "feature-update-frontend-src-components-logstab-tsx-to-display-the-three-new-log-event-types-universe-debug-sample-universe-volume-parse-error-universe-filter-result-apply-color-coding-yellow-for-universe-volume-parse-error-default-color-for-universe-debug-sample-and-universe-filter-result",
+      "title": "Update frontend/src/components/LogsTab.tsx to display the three new log event types (UNIVERSE_DEBUG_SAMPLE, UNIVERSE_VOLUME_PARSE_ERROR, UNIVERSE_FILTER_RESULT). Apply color coding: yellow for UNIVERSE_VOLUME_PARSE_ERROR, default color for UNIVERSE_DEBUG_SAMPLE and UNIVERSE_FILTER_RESULT.",
+      "reqIds": [
+        "REQ-33"
+      ],
+      "version": 1
+    },
+    {
+      "id": "feature-replace-universe-endpoint-in-safefetch-base-configuration-from-https-api-binance-com-to-https-fapi-binance-com-for-futures-api-access",
+      "title": "Replace universe endpoint in safeFetch base configuration from https://api.binance.com to https://fapi.binance.com for Futures API access",
+      "reqIds": [
+        "REQ-34"
+      ],
+      "version": 1
+    },
+    {
+      "id": "feature-update-fetchuniverse24h-function-in-binanceapi-ts-to-call-https-fapi-binance-com-fapi-v1-ticker-24hr-endpoint-for-futures-usdt-m-perpetual-contracts",
+      "title": "Update fetchUniverse24h function in binanceApi.ts to call https://fapi.binance.com/fapi/v1/ticker/24hr endpoint for Futures USDT-M perpetual contracts",
+      "reqIds": [
+        "REQ-35"
+      ],
+      "version": 1
+    },
+    {
+      "id": "feature-modify-universefilter-ts-to-filter-universe-to-only-symbols-ending-with-usdt-and-explicitly-exclude-all-symbols-containing-usdc-case-insensitive-check-on-the-full-symbol-string",
+      "title": "Modify universeFilter.ts to filter universe to ONLY symbols ending with 'USDT' and explicitly exclude all symbols containing 'USDC' (case-insensitive check on the full symbol string)",
+      "reqIds": [
+        "REQ-36"
+      ],
+      "version": 1
+    },
+    {
+      "id": "feature-add-validation-in-universefilter-ts-to-exclude-stable-to-stable-pairs-by-checking-if-base-asset-symbol-without-usdt-suffix-matches-any-stablecoin-identifier-usdc-busd-tusd-fdusd-usdp-dai-ust-pax-usd1-case-insensitive",
+      "title": "Add validation in universeFilter.ts to exclude stable-to-stable pairs by checking if base asset (symbol without 'USDT' suffix) matches any stablecoin identifier: USDC, BUSD, TUSD, FDUSD, USDP, DAI, UST, PAX, USD1 (case-insensitive)",
+      "reqIds": [
+        "REQ-37"
+      ],
+      "version": 1
+    },
+    {
+      "id": "feature-update-universefilter-ts-to-parse-quotevolume-using-number-item-quotevolume-and-apply-volume-threshold-filter-5-000-000-after-proper-numeric-conversion",
+      "title": "Update universeFilter.ts to parse quoteVolume using Number(item.quoteVolume) and apply volume threshold filter (>= 5,000,000) AFTER proper numeric conversion",
+      "reqIds": [
+        "REQ-38"
+      ],
+      "version": 1
+    },
+    {
+      "id": "feature-add-universe-source-log-event-immediately-when-fetchuniverse24h-is-called-with-payload-containing-source-futures-usdtm-endpoint-fapi-v1-ticker-24hr",
+      "title": "Add UNIVERSE_SOURCE log event immediately when fetchUniverse24h is called, with payload containing { source: 'FUTURES_USDTM', endpoint: '/fapi/v1/ticker/24hr' }",
+      "reqIds": [
+        "REQ-39"
+      ],
+      "version": 1
+    },
+    {
+      "id": "feature-update-universefilter-ts-fallback-logic-to-apply-same-usdt-only-no-usdc-no-stable-stable-filters-when-filtered-length-0-then-sort-by-quotevolume-descending-and-return-exactly-top-5-symbols-not-20",
+      "title": "Update universeFilter.ts fallback logic to apply same USDT-only, no-USDC, no-stable/stable filters when filtered.length === 0, then sort by quoteVolume descending and return exactly top 5 symbols (not 20)",
+      "reqIds": [
+        "REQ-40"
+      ],
+      "version": 1
+    },
+    {
+      "id": "feature-add-universe-source-to-logentry-type-union-in-frontend-src-types-store-ts",
+      "title": "Add UNIVERSE_SOURCE to LogEntry type union in frontend/src/types/store.ts",
+      "reqIds": [
+        "REQ-41"
+      ],
+      "version": 1
+    },
+    {
+      "id": "feature-update-logstab-tsx-to-display-universe-source-log-event-type-with-default-color-coding-not-red-or-yellow",
+      "title": "Update LogsTab.tsx to display UNIVERSE_SOURCE log event type with default color coding (not red or yellow)",
+      "reqIds": [
+        "REQ-42"
       ],
       "version": 1
     }
@@ -398,6 +526,23 @@
       "summary": "Add new log events: FETCH_RETRY, FETCH_FAIL, UNIVERSE_EMPTY, UNIVERSE_FALLBACK, TOP5_SKIP_EMPTY for transport diagnostics",
       "reqIds": [
         "REQ-15"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "AR-36",
+      "summary": "Add temporary debug logging to diagnose universe filtering: UNIVERSE_DEBUG_SAMPLE (first 10 raw elements with quoteVolume parsing details), UNIVERSE_VOLUME_PARSE_ERROR (NaN quoteVolume cases), UNIVERSE_FILTER_RESULT (before/after counts + threshold)",
+      "reqIds": [
+        "REQ-4"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "AR-37",
+      "summary": "Switch universe source to Binance USDT-M Futures: https://fapi.binance.com/fapi/v1/ticker/24hr, filter for PERPETUAL contracts ending in USDT, exclude USDC and stable/stable pairs",
+      "reqIds": [
+        "REQ-1",
+        "REQ-4"
       ],
       "status": "pending"
     }

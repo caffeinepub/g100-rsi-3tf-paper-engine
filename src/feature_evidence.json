@@ -2,8 +2,8 @@
   "kind": "feature_evidence_report",
   "features": [
     {
-      "featureId": "feature-implement-safefetch-utility-function-as-global-transport-layer-with-base-endpoint-https-api-binance-com-5000ms-timeout-using-abortcontroller-2-retry-attempts-with-500ms-delay-between-retries-never-throws-errors-returns-null-on-final-failure-logs-fetch-retry-event-on-each-retry-attempt-and-fetch-fail-event-on-final-failure-with-url-error-payload",
-      "featureTitle": "Implement safeFetch utility function as global transport layer with base endpoint https://api.binance.com, 5000ms timeout using AbortController, 2 retry attempts with 500ms delay between retries, never throws errors (returns null on final failure), logs FETCH_RETRY event on each retry attempt and FETCH_FAIL event on final failure with {url, error} payload",
+      "featureId": "feature-replace-universe-endpoint-in-safefetch-base-configuration-from-https-api-binance-com-to-https-fapi-binance-com-for-futures-api-access",
+      "featureTitle": "Replace universe endpoint in safeFetch base configuration from https://api.binance.com to https://fapi.binance.com for Futures API access",
       "files": [
         "frontend/src/utils/safeFetch.ts"
       ],
@@ -15,13 +15,13 @@
         "github-export-icp-cli@1.0.0"
       ],
       "testIds": [
-        "REQ-19"
+        "REQ-34"
       ],
       "confidence": "high"
     },
     {
-      "featureId": "feature-replace-all-existing-binance-api-fetch-calls-in-binanceapi-ts-with-safefetch-utility-change-base-url-from-https-data-api-binance-vision-to-https-api-binance-com-for-all-endpoints",
-      "featureTitle": "Replace all existing Binance API fetch calls in binanceApi.ts with safeFetch utility, change base URL from https://data-api.binance.vision to https://api.binance.com for all endpoints",
+      "featureId": "feature-update-fetchuniverse24h-function-in-binanceapi-ts-to-call-https-fapi-binance-com-fapi-v1-ticker-24hr-endpoint-for-futures-usdt-m-perpetual-contracts",
+      "featureTitle": "Update fetchUniverse24h function in binanceApi.ts to call https://fapi.binance.com/fapi/v1/ticker/24hr endpoint for Futures USDT-M perpetual contracts",
       "files": [
         "frontend/src/services/binanceApi.ts"
       ],
@@ -33,31 +33,13 @@
         "github-export-icp-cli@1.0.0"
       ],
       "testIds": [
-        "REQ-20"
+        "REQ-35"
       ],
       "confidence": "high"
     },
     {
-      "featureId": "feature-replace-fetchexchangeinfo-and-fetch24hrtickers-functions-with-single-fetchuniverse24h-function-that-calls-https-api-binance-com-api-v3-ticker-24hr-using-safefetch-validates-result-is-array-logs-universe-empty-event-and-returns-empty-array-if-result-is-not-array-or-null-never-throws-errors",
-      "featureTitle": "Replace fetchExchangeInfo and fetch24hrTickers functions with single fetchUniverse24h function that calls https://api.binance.com/api/v3/ticker/24hr using safeFetch, validates result is array, logs UNIVERSE_EMPTY event and returns empty array if result is not array or null, never throws errors",
-      "files": [
-        "frontend/src/services/binanceApi.ts"
-      ],
-      "components": [
-        "core-infrastructure@1.0.2",
-        "shadcn-ui@1.0.0",
-        "build-template-react@1.0.0",
-        "initial-app@1.0.0",
-        "github-export-icp-cli@1.0.0"
-      ],
-      "testIds": [
-        "REQ-21"
-      ],
-      "confidence": "high"
-    },
-    {
-      "featureId": "feature-modify-universefilter-ts-to-use-new-fetchuniverse24h-function-lower-quotevolume-filter-threshold-from-20-000-000-to-5-000-000-convert-quotevolume-using-number-implement-fallback-logic-if-filtered-array-length-is-0-then-log-universe-fallback-event-and-take-first-20-usdt-ending-symbols-from-raw-universe-without-volume-filter",
-      "featureTitle": "Modify universeFilter.ts to use new fetchUniverse24h function, lower quoteVolume filter threshold from 20,000,000 to 5,000,000, convert quoteVolume using Number(), implement fallback logic: if filtered array length is 0 then log UNIVERSE_FALLBACK event and take first 20 USDT-ending symbols from raw universe without volume filter",
+      "featureId": "feature-modify-universefilter-ts-to-filter-universe-to-only-symbols-ending-with-usdt-and-explicitly-exclude-all-symbols-containing-usdc-case-insensitive-check-on-the-full-symbol-string",
+      "featureTitle": "Modify universeFilter.ts to filter universe to ONLY symbols ending with 'USDT' and explicitly exclude all symbols containing 'USDC' (case-insensitive check on the full symbol string)",
       "files": [
         "frontend/src/services/universeFilter.ts"
       ],
@@ -69,16 +51,15 @@
         "github-export-icp-cli@1.0.0"
       ],
       "testIds": [
-        "REQ-22"
+        "REQ-36"
       ],
       "confidence": "high"
     },
     {
-      "featureId": "feature-add-300ms-delay-between-per-symbol-kline-fetch-calls-only-not-between-other-fetch-types-or-entire-engine-loop-implement-using-settimeout-or-promise-based-delay-helper-function",
-      "featureTitle": "Add 300ms delay between per-symbol kline fetch calls only (not between other fetch types or entire engine loop), implement using setTimeout or Promise-based delay helper function",
+      "featureId": "feature-add-validation-in-universefilter-ts-to-exclude-stable-to-stable-pairs-by-checking-if-base-asset-symbol-without-usdt-suffix-matches-any-stablecoin-identifier-usdc-busd-tusd-fdusd-usdp-dai-ust-pax-usd1-case-insensitive",
+      "featureTitle": "Add validation in universeFilter.ts to exclude stable-to-stable pairs by checking if base asset (symbol without 'USDT' suffix) matches any stablecoin identifier: USDC, BUSD, TUSD, FDUSD, USDP, DAI, UST, PAX, USD1 (case-insensitive)",
       "files": [
-        "frontend/src/services/engineLoop.ts",
-        "frontend/src/utils/delay.ts"
+        "frontend/src/services/universeFilter.ts"
       ],
       "components": [
         "core-infrastructure@1.0.2",
@@ -88,15 +69,15 @@
         "github-export-icp-cli@1.0.0"
       ],
       "testIds": [
-        "REQ-23"
+        "REQ-37"
       ],
       "confidence": "high"
     },
     {
-      "featureId": "feature-modify-engineloop-ts-to-handle-all-safefetch-null-returns-gracefully-top5-refresh-failures-log-top5-refresh-fail-event-but-continue-engine-execution-kline-fetch-failures-skip-that-symbol-but-continue-processing-other-symbols-no-fetch-error-may-stop-engine-tick-or-crash-the-engine-ensure-zero-unhandled-promise-rejections-in-engine-loop",
-      "featureTitle": "Modify engineLoop.ts to handle all safeFetch null returns gracefully: TOP5 refresh failures log TOP5_REFRESH_FAIL event but continue engine execution, kline fetch failures skip that symbol but continue processing other symbols, no fetch error may stop ENGINE_TICK or crash the engine, ensure zero unhandled promise rejections in engine loop",
+      "featureId": "feature-update-universefilter-ts-to-parse-quotevolume-using-number-item-quotevolume-and-apply-volume-threshold-filter-5-000-000-after-proper-numeric-conversion",
+      "featureTitle": "Update universeFilter.ts to parse quoteVolume using Number(item.quoteVolume) and apply volume threshold filter (>= 5,000,000) AFTER proper numeric conversion",
       "files": [
-        "frontend/src/services/engineLoop.ts"
+        "frontend/src/services/universeFilter.ts"
       ],
       "components": [
         "core-infrastructure@1.0.2",
@@ -106,13 +87,49 @@
         "github-export-icp-cli@1.0.0"
       ],
       "testIds": [
-        "REQ-24"
+        "REQ-38"
       ],
       "confidence": "high"
     },
     {
-      "featureId": "feature-add-new-log-event-types-to-store-ts-logentry-fetch-retry-fetch-fail-universe-empty-universe-fallback-top5-refresh-fail-top5-skip-empty-ensure-all-new-events-follow-existing-log-structure-with-timestamp-and-payload",
-      "featureTitle": "Add new log event types to store.ts LogEntry: FETCH_RETRY, FETCH_FAIL, UNIVERSE_EMPTY, UNIVERSE_FALLBACK, TOP5_REFRESH_FAIL, TOP5_SKIP_EMPTY, ensure all new events follow existing log structure with timestamp and payload",
+      "featureId": "feature-add-universe-source-log-event-immediately-when-fetchuniverse24h-is-called-with-payload-containing-source-futures-usdtm-endpoint-fapi-v1-ticker-24hr",
+      "featureTitle": "Add UNIVERSE_SOURCE log event immediately when fetchUniverse24h is called, with payload containing { source: 'FUTURES_USDTM', endpoint: '/fapi/v1/ticker/24hr' }",
+      "files": [
+        "frontend/src/services/binanceApi.ts"
+      ],
+      "components": [
+        "core-infrastructure@1.0.2",
+        "shadcn-ui@1.0.0",
+        "build-template-react@1.0.0",
+        "initial-app@1.0.0",
+        "github-export-icp-cli@1.0.0"
+      ],
+      "testIds": [
+        "REQ-39"
+      ],
+      "confidence": "high"
+    },
+    {
+      "featureId": "feature-update-universefilter-ts-fallback-logic-to-apply-same-usdt-only-no-usdc-no-stable-stable-filters-when-filtered-length-0-then-sort-by-quotevolume-descending-and-return-exactly-top-5-symbols-not-20",
+      "featureTitle": "Update universeFilter.ts fallback logic to apply same USDT-only, no-USDC, no-stable/stable filters when filtered.length === 0, then sort by quoteVolume descending and return exactly top 5 symbols (not 20)",
+      "files": [
+        "frontend/src/services/universeFilter.ts"
+      ],
+      "components": [
+        "core-infrastructure@1.0.2",
+        "shadcn-ui@1.0.0",
+        "build-template-react@1.0.0",
+        "initial-app@1.0.0",
+        "github-export-icp-cli@1.0.0"
+      ],
+      "testIds": [
+        "REQ-40"
+      ],
+      "confidence": "high"
+    },
+    {
+      "featureId": "feature-add-universe-source-to-logentry-type-union-in-frontend-src-types-store-ts",
+      "featureTitle": "Add UNIVERSE_SOURCE to LogEntry type union in frontend/src/types/store.ts",
       "files": [
         "frontend/src/types/store.ts"
       ],
@@ -124,13 +141,13 @@
         "github-export-icp-cli@1.0.0"
       ],
       "testIds": [
-        "REQ-25"
+        "REQ-41"
       ],
       "confidence": "high"
     },
     {
-      "featureId": "feature-update-logstab-tsx-to-display-new-log-event-types-fetch-retry-fetch-fail-universe-empty-universe-fallback-top5-refresh-fail-top5-skip-empty-with-appropriate-color-coding-red-for-fetch-fail-and-top5-refresh-fail-yellow-for-fetch-retry-and-universe-fallback-default-color-for-universe-empty-and-top5-skip-empty",
-      "featureTitle": "Update LogsTab.tsx to display new log event types (FETCH_RETRY, FETCH_FAIL, UNIVERSE_EMPTY, UNIVERSE_FALLBACK, TOP5_REFRESH_FAIL, TOP5_SKIP_EMPTY) with appropriate color coding: red for FETCH_FAIL and TOP5_REFRESH_FAIL, yellow for FETCH_RETRY and UNIVERSE_FALLBACK, default color for UNIVERSE_EMPTY and TOP5_SKIP_EMPTY",
+      "featureId": "feature-update-logstab-tsx-to-display-universe-source-log-event-type-with-default-color-coding-not-red-or-yellow",
+      "featureTitle": "Update LogsTab.tsx to display UNIVERSE_SOURCE log event type with default color coding (not red or yellow)",
       "files": [
         "frontend/src/components/LogsTab.tsx"
       ],
@@ -142,7 +159,7 @@
         "github-export-icp-cli@1.0.0"
       ],
       "testIds": [
-        "REQ-26"
+        "REQ-42"
       ],
       "confidence": "high"
     }

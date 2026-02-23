@@ -1,7 +1,7 @@
 // Safe fetch utility with timeout, retry logic, and comprehensive error handling
 import { useEngineStore } from '../store/engineStore';
 
-const BASE_URL = 'https://api.binance.com';
+const BASE_URL = 'https://fapi.binance.com';
 const TIMEOUT_MS = 5000;
 const RETRY_DELAY_MS = 500;
 

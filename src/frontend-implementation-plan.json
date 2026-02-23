@@ -1,162 +1,148 @@
 {
   "kind": "implementation_plan",
   "version": "1.0",
-  "title": "G100 Transport Stabilization Patch",
+  "title": "Switch universe source to Binance USDT-M Futures",
   "requirements": [
     {
-      "id": "REQ-19",
-      "summary": "Implement safeFetch utility function with timeout, retry logic, and comprehensive error handling",
+      "id": "REQ-34",
+      "summary": "Replace universe endpoint base URL from Spot API to Futures API in safeFetch configuration",
       "acceptanceCriteria": [
-        "safeFetch function accepts url, optional fetch options, and retries parameter (default 2)",
-        "AbortController terminates request after 5000ms timeout",
-        "On non-ok response or network error, retry up to 2 times with 500ms delay",
-        "FETCH_RETRY event logged before each retry with attempt number",
-        "FETCH_FAIL event logged on final failure with url and error message",
-        "Function returns null on final failure, never propagates error upward",
-        "Function returns parsed JSON response on success"
+        "safeFetch utility uses https://fapi.binance.com as base URL",
+        "All universe-related fetches target Futures API endpoints"
       ],
       "file_operations": [
         {
           "path": "frontend/src/utils/safeFetch.ts",
-          "operation": "create",
-          "description": "Create safeFetch utility function with base endpoint https://api.binance.com, 5000ms timeout using AbortController, 2 retry attempts with 500ms delay between retries, returns null on final failure (never throws), logs FETCH_RETRY event before each retry with attempt number, logs FETCH_FAIL event on final failure with {url, error} payload, returns parsed JSON on success"
+          "operation": "modify",
+          "description": "Update base URL configuration from https://api.binance.com to https://fapi.binance.com for Futures API access. Modify the URL construction logic to use the new Futures base URL when making universe-related requests."
         }
       ]
     },
     {
-      "id": "REQ-20",
-      "summary": "Replace all Binance API fetch calls with safeFetch and update base URL",
+      "id": "REQ-35",
+      "summary": "Update fetchUniverse24h to call Futures ticker endpoint instead of Spot endpoint",
       "acceptanceCriteria": [
-        "All fetch calls in binanceApi.ts replaced with safeFetch",
-        "Base URL changed to https://api.binance.com",
-        "Existing endpoint paths preserved (/api/v3/klines, etc.)",
-        "Functions return null when safeFetch returns null",
-        "No unhandled promise rejections in binanceApi.ts"
+        "fetchUniverse24h calls /fapi/v1/ticker/24hr endpoint",
+        "Function returns array of Futures ticker data or empty array on failure"
       ],
       "file_operations": [
         {
           "path": "frontend/src/services/binanceApi.ts",
           "operation": "modify",
-          "description": "Replace all existing fetch calls with safeFetch utility, change base URL from https://data-api.binance.vision to https://api.binance.com for all endpoints, preserve existing endpoint paths (/api/v3/klines, etc.), ensure functions return null when safeFetch returns null, eliminate all unhandled promise rejections"
+          "description": "Replace the endpoint in fetchUniverse24h from /api/v3/ticker/24hr to /fapi/v1/ticker/24hr to fetch USDT-M Futures perpetual contract data. Ensure the function continues to return an array of ticker objects or empty array on failure, maintaining the same error handling pattern."
         }
       ]
     },
     {
-      "id": "REQ-21",
-      "summary": "Replace fetchExchangeInfo and fetch24hrTickers with unified fetchUniverse24h function",
+      "id": "REQ-36",
+      "summary": "Modify universe filtering to include only USDT-ending symbols and explicitly exclude all USDC-containing symbols",
       "acceptanceCriteria": [
-        "fetchUniverse24h function created calling /api/v3/ticker/24hr",
-        "Uses safeFetch for transport",
-        "Returns empty array if safeFetch returns null",
-        "Returns empty array if result is not Array.isArray",
-        "Logs UNIVERSE_EMPTY event when returning empty array",
-        "Function never throws errors"
-      ],
-      "file_operations": [
-        {
-          "path": "frontend/src/services/binanceApi.ts",
-          "operation": "modify",
-          "description": "Replace fetchExchangeInfo and fetch24hrTickers functions with single fetchUniverse24h function that calls https://api.binance.com/api/v3/ticker/24hr using safeFetch, validates result is array using Array.isArray, logs UNIVERSE_EMPTY event and returns empty array if result is null or not array, never throws errors"
-        }
-      ]
-    },
-    {
-      "id": "REQ-22",
-      "summary": "Update universe filtering with lower volume threshold and fallback logic",
-      "acceptanceCriteria": [
-        "quoteVolume filter changed to > 5,000,000",
-        "quoteVolume parsed using Number() function",
-        "If filtered.length === 0 after all filters applied, log UNIVERSE_FALLBACK",
-        "Fallback selects first 20 symbols ending with 'USDT' from raw universe",
-        "Fallback bypasses volume filter but keeps USDT requirement",
-        "System never produces empty TOP5 due to filtering",
-        "Existing UNIVERSE_FILTERED log event preserved with {before, after} counts"
+        "Filter rejects any symbol not ending with 'USDT'",
+        "Filter rejects any symbol containing 'USDC' anywhere in the string (case-insensitive)",
+        "USDC exclusion check runs before volume threshold filtering"
       ],
       "file_operations": [
         {
           "path": "frontend/src/services/universeFilter.ts",
           "operation": "modify",
-          "description": "Modify to use new fetchUniverse24h function from binanceApi, lower quoteVolume filter threshold from 20,000,000 to 5,000,000, convert quoteVolume using Number(), implement fallback logic: if filtered array length is 0 then log UNIVERSE_FALLBACK event and take first 20 USDT-ending symbols from raw universe without volume filter, preserve existing UNIVERSE_FILTERED log event with {before, after} counts"
+          "description": "Add filtering logic to ensure symbols end with 'USDT' and do not contain 'USDC' anywhere in the string (case-insensitive check). Apply these filters early in the processing pipeline, before the existing volume threshold filter. Reject symbols that fail either condition."
         }
       ]
     },
     {
-      "id": "REQ-23",
-      "summary": "Add delay between per-symbol kline fetch calls",
+      "id": "REQ-37",
+      "summary": "Add stable-to-stable pair exclusion by checking base asset against stablecoin identifiers",
       "acceptanceCriteria": [
-        "300ms delay added between consecutive kline fetch calls for different symbols",
-        "Delay only applies to per-symbol kline fetching in engineLoop.ts",
-        "No delay added to universe fetch or other API calls",
-        "Engine tick interval remains 15 seconds",
-        "Delay implemented using setTimeout or async delay helper"
+        "Extract base asset by removing 'USDT' suffix",
+        "Reject symbol if base asset matches any stablecoin identifier (case-insensitive)",
+        "Stable-to-stable exclusion runs after USDT/USDC filtering but before volume threshold"
       ],
       "file_operations": [
         {
-          "path": "frontend/src/utils/delay.ts",
-          "operation": "create",
-          "description": "Create async delay helper function that returns a Promise resolving after specified milliseconds using setTimeout"
-        },
-        {
-          "path": "frontend/src/services/engineLoop.ts",
+          "path": "frontend/src/services/universeFilter.ts",
           "operation": "modify",
-          "description": "Add 300ms delay between per-symbol kline fetch calls only (not between other fetch types or entire engine loop) using the delay helper function, ensure delay only applies to consecutive symbol processing, do not delay universe fetch or engine tick interval (remains 15 seconds)"
+          "description": "Add validation to extract base asset (symbol without 'USDT' suffix) and check if it matches any stablecoin identifier: USDC, BUSD, TUSD, FDUSD, USDP, DAI, UST, PAX, USD1 (case-insensitive comparison). Reject symbols where base asset is a stablecoin. Place this check after USDT/USDC filtering but before volume threshold filtering."
         }
       ]
     },
     {
-      "id": "REQ-24",
-      "summary": "Implement graceful error handling for all safeFetch null returns in engine loop",
+      "id": "REQ-38",
+      "summary": "Update volume parsing to use Number() conversion and apply threshold after numeric conversion",
       "acceptanceCriteria": [
-        "If TOP5 refresh (fetchUniverse24h) returns empty array, log TOP5_REFRESH_FAIL and continue with existing TOP5",
-        "If kline fetch returns null for a symbol, skip RSI calculation for that symbol and continue loop",
-        "ENGINE_TICK event logged on every tick regardless of fetch failures",
-        "Engine never crashes due to fetch errors",
-        "All promises properly caught with try/catch or .catch()",
-        "Engine remains deterministic and stable"
+        "Parse quoteVolume with Number() before comparison",
+        "Volume threshold check (>= 5,000,000) happens after numeric conversion",
+        "NaN values from parsing are logged but not excluded from processing"
       ],
       "file_operations": [
         {
-          "path": "frontend/src/services/engineLoop.ts",
+          "path": "frontend/src/services/universeFilter.ts",
           "operation": "modify",
-          "description": "Modify to handle all safeFetch null returns gracefully: TOP5 refresh failures log TOP5_REFRESH_FAIL event but continue engine execution with existing TOP5, kline fetch failures skip that symbol but continue processing other symbols, ensure no fetch error may stop ENGINE_TICK or crash the engine, wrap all async operations in try/catch blocks, ensure zero unhandled promise rejections in engine loop, log TOP5_SKIP_EMPTY event when TOP5 refresh returns empty array"
+          "description": "Replace existing quoteVolume parsing logic with Number(item.quoteVolume) conversion. Apply the volume threshold filter (>= 5,000,000) after numeric conversion is complete. Add logging for NaN values encountered during parsing, but do not exclude them from further processing."
         }
       ]
     },
     {
-      "id": "REQ-25",
-      "summary": "Add new log event types to store type definitions",
+      "id": "REQ-39",
+      "summary": "Add UNIVERSE_SOURCE log event when fetchUniverse24h is called",
       "acceptanceCriteria": [
-        "FETCH_RETRY event type added to LogEntry union type",
-        "FETCH_FAIL event type added to LogEntry union type",
-        "UNIVERSE_EMPTY event type added to LogEntry union type",
-        "UNIVERSE_FALLBACK event type added to LogEntry union type",
-        "TOP5_REFRESH_FAIL event type added to LogEntry union type",
-        "TOP5_SKIP_EMPTY event type added to LogEntry union type",
-        "All new event types compatible with existing log buffer (max 1000 entries)"
+        "UNIVERSE_SOURCE event logged at start of universe fetch",
+        "Payload includes source='FUTURES_USDTM' and endpoint path",
+        "Event appears in logs before UNIVERSE_FILTERED or UNIVERSE_DEBUG_SAMPLE"
+      ],
+      "file_operations": [
+        {
+          "path": "frontend/src/services/binanceApi.ts",
+          "operation": "modify",
+          "description": "Add a log event immediately at the start of fetchUniverse24h function (before any API call) with event type UNIVERSE_SOURCE and payload containing { source: 'FUTURES_USDTM', endpoint: '/fapi/v1/ticker/24hr' }. Use engineStore.getState().addLog() to record the event."
+        }
+      ]
+    },
+    {
+      "id": "REQ-40",
+      "summary": "Update fallback logic to apply USDT-only, no-USDC, no-stable/stable filters and return top 5 symbols",
+      "acceptanceCriteria": [
+        "Fallback filters raw universe to USDT-ending symbols only",
+        "Fallback excludes all USDC-containing symbols",
+        "Fallback excludes stable-to-stable pairs (base asset check)",
+        "Fallback sorts remaining by quoteVolume DESC and returns exactly 5 symbols",
+        "UNIVERSE_FALLBACK event logged when fallback executes"
+      ],
+      "file_operations": [
+        {
+          "path": "frontend/src/services/universeFilter.ts",
+          "operation": "modify",
+          "description": "Update the fallback logic (when filtered.length === 0) to apply the same USDT-only filter, USDC exclusion, and stable-to-stable pair exclusion checks. Sort the resulting symbols by quoteVolume in descending order and return exactly the top 5 symbols (not 20). Ensure UNIVERSE_FALLBACK event is logged when this fallback path executes."
+        }
+      ]
+    },
+    {
+      "id": "REQ-41",
+      "summary": "Add UNIVERSE_SOURCE to LogEntry type union",
+      "acceptanceCriteria": [
+        "UNIVERSE_SOURCE added to LogEntry type union",
+        "Type definition follows existing log structure with timestamp and payload fields"
       ],
       "file_operations": [
         {
           "path": "frontend/src/types/store.ts",
           "operation": "modify",
-          "description": "Add new log event types to LogEntry union type: FETCH_RETRY (with attempt number), FETCH_FAIL (with url and error), UNIVERSE_EMPTY, UNIVERSE_FALLBACK, TOP5_REFRESH_FAIL, TOP5_SKIP_EMPTY, ensure all new events follow existing log structure with timestamp and payload, maintain compatibility with existing log buffer (max 1000 entries)"
+          "description": "Add UNIVERSE_SOURCE to the LogEntry type union. Ensure it includes the standard log structure with timestamp and payload fields, following the pattern of existing log event types."
         }
       ]
     },
     {
-      "id": "REQ-26",
-      "summary": "Update LogsTab to display and color-code new log event types",
+      "id": "REQ-42",
+      "summary": "Display UNIVERSE_SOURCE log event in logs panel with default color coding",
       "acceptanceCriteria": [
-        "FETCH_FAIL and TOP5_REFRESH_FAIL events display in red",
-        "FETCH_RETRY and UNIVERSE_FALLBACK events display in yellow/warning color",
-        "UNIVERSE_EMPTY and TOP5_SKIP_EMPTY events display in default text color",
-        "All new event types render properly in logs panel",
-        "Payload data displayed for all new event types"
+        "UNIVERSE_SOURCE events render in logs panel",
+        "Event uses default color (not error red or warning yellow)",
+        "Payload displays source and endpoint information"
       ],
       "file_operations": [
         {
           "path": "frontend/src/components/LogsTab.tsx",
           "operation": "modify",
-          "description": "Update to display new log event types (FETCH_RETRY, FETCH_FAIL, UNIVERSE_EMPTY, UNIVERSE_FALLBACK, TOP5_REFRESH_FAIL, TOP5_SKIP_EMPTY) with appropriate color coding: red for FETCH_FAIL and TOP5_REFRESH_FAIL, yellow for FETCH_RETRY and UNIVERSE_FALLBACK, default color for UNIVERSE_EMPTY and TOP5_SKIP_EMPTY, ensure payload data displays properly for all new event types"
+          "description": "Add rendering logic for UNIVERSE_SOURCE log event type. Use default color coding (not red or yellow) for this event type. Ensure the payload containing source and endpoint information is displayed in the log entry."
         }
       ]
     }
